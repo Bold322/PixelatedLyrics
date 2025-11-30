@@ -48,9 +48,9 @@ export class YouTubeExtractor {
   }
 
   /**
-   * Gets available subtitle languages for a video (manual subtitles only, not auto-generated)
+   * Gets available subtitle languages for a video (both manual and auto-generated)
    */
-  async getAvailableLanguages(videoUrl: string): Promise<{ code: string; name: string }[]> {
+  async getAvailableLanguages(videoUrl: string): Promise<{ code: string; name: string; isAuto: boolean }[]> {
     console.log('📝 Fetching available subtitles...');
     const normalizedUrl = this.normalizeUrl(videoUrl);
     
@@ -62,7 +62,8 @@ export class YouTubeExtractor {
         { maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
       );
       
-      const languages: { code: string; name: string }[] = [];
+      const languages: { code: string; name: string; isAuto: boolean }[] = [];
+      const seenCodes = new Set<string>(); // Avoid duplicates
       const lines = stdout.split('\n');
       
       let parsingManualSubs = false;
@@ -81,25 +82,27 @@ export class YouTubeExtractor {
           continue;
         }
         
-        // Only parse manual subtitles, skip auto captions
-        if (parsingManualSubs && !parsingAutoCaptions) {
-          if (line.includes('Language') && line.includes('Name')) {
-            continue;
-          }
-          
+        // Parse both manual subtitles and auto captions
+        if ((parsingManualSubs || parsingAutoCaptions) && !line.includes('Language') && !line.includes('Name')) {
           if (line.trim() !== '' && !line.startsWith('--')) {
             const parts = line.trim().split(/\s{2,}/);
             if (parts.length >= 2) {
-              languages.push({
-                code: parts[0],
-                name: parts[1]
-              });
+              const code = parts[0];
+              // Only add if we haven't seen this code before (prefer manual over auto)
+              if (!seenCodes.has(code)) {
+                seenCodes.add(code);
+                languages.push({
+                  code,
+                  name: parts[1],
+                  isAuto: parsingAutoCaptions
+                });
+              }
             }
           }
         }
       }
       
-      console.log(`✅ Found ${languages.length} manual subtitle languages`);
+      console.log(`✅ Found ${languages.length} subtitle languages (${languages.filter(l => !l.isAuto).length} manual, ${languages.filter(l => l.isAuto).length} auto)`);
       return languages;
     } catch (error) {
       console.warn('⚠️ Failed to list subtitles with yt-dlp:', error);
@@ -130,8 +133,14 @@ export class YouTubeExtractor {
           await unlink(`${outputPath}.vtt`);
         }
 
-        // Use --write-sub for manual subtitles only (not --write-auto-sub)
-        await execPromise(`${this.ytDlpPath} --write-sub --sub-lang ${lang} --skip-download --no-playlist --output "${outputPath}" "${normalizedUrl}"`);
+        // Try manual subtitles first, then auto-generated if not available
+        try {
+          await execPromise(`${this.ytDlpPath} --write-sub --sub-lang ${lang} --skip-download --no-playlist --output "${outputPath}" "${normalizedUrl}"`);
+        } catch (error) {
+          // If manual subtitle fails, try auto-generated captions
+          console.log(`  Trying auto-generated captions for ${lang}...`);
+          await execPromise(`${this.ytDlpPath} --write-auto-sub --sub-lang ${lang} --skip-download --no-playlist --output "${outputPath}" "${normalizedUrl}"`);
+        }
         
         // yt-dlp might append language code to filename
         const files = await readdir(tempDir);

@@ -119,6 +119,38 @@ button.danger {
     margin: 1.5rem 0;
 }
 
+.language-item {
+    padding: 1rem;
+    background: #222;
+    border: 2px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.language-item:hover {
+    background: #2a2a2a;
+    border-color: var(--accent-color);
+}
+
+.language-item.selected {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.language-item.auto-caption {
+    opacity: 0.8;
+    border-style: dashed;
+}
+
+.language-item.auto-caption::after {
+    content: " 🤖";
+    font-size: 0.8rem;
+}
+
 .lang-checkbox {
     display: flex;
     align-items: center;

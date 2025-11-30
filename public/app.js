@@ -132,13 +132,18 @@ async function checkVideo() {
         // Render languages
         inputs.languagesList.innerHTML = '';
         if (data.languages.length === 0) {
-            inputs.languagesList.innerHTML = '<p style="color: #ff6b6b;">No manual subtitles available for this video. Only videos with manually uploaded captions are supported.</p>';
+            inputs.languagesList.innerHTML = '<p style="color: #ff6b6b;">No subtitles or captions available for this video. Please try a different video.</p>';
             return;
         }
 
-        // Sort: preferred first
+        // Sort: manual first, then preferred languages, then auto-generated
         const preferred = ['mn', 'en', 'ja', 'ko', 'ru'];
         data.languages.sort((a, b) => {
+            // Manual subtitles first
+            if (!a.isAuto && b.isAuto) return -1;
+            if (a.isAuto && !b.isAuto) return 1;
+            
+            // Then preferred languages
             const aIdx = preferred.findIndex(p => a.code.startsWith(p));
             const bIdx = preferred.findIndex(p => b.code.startsWith(p));
             if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
@@ -150,11 +155,19 @@ async function checkVideo() {
         data.languages.forEach(lang => {
             const div = document.createElement('div');
             div.className = 'language-item';
-            div.textContent = `${lang.code} - ${lang.name}`;
+            
+            // Show language with type indicator
+            const typeLabel = lang.isAuto ? ' (Auto)' : ' (Manual)';
+            div.innerHTML = `<span>${lang.code} - ${lang.name}${typeLabel}</span>`;
             div.dataset.code = lang.code; // Store the code in data attribute
             
-            // Auto-select preferred languages
-            if (preferred.some(p => lang.code.startsWith(p))) {
+            // Add visual indicator for auto-generated
+            if (lang.isAuto) {
+                div.classList.add('auto-caption');
+            }
+            
+            // Auto-select preferred languages (manual preferred)
+            if (preferred.some(p => lang.code.startsWith(p)) && !lang.isAuto) {
                 div.classList.add('selected');
             }
             
