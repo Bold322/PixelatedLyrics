@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MrLyrics Web</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>MrLyrics</h1>
+            <p>Pixelated Lyrics Video Generator</p>
+        </header>
+
+        <main>
+            <!-- Step 1: Input -->
+            <section id="inputSection" class="active">
+                <div class="input-group">
+                    <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." autocomplete="off">
+                    <button id="checkBtn">Check Video</button>
+                </div>
+                <div id="errorMsg" class="error"></div>
+            </section>
+
+            <!-- Step 2: Configuration -->
+            <section id="configSection" class="hidden">
+                <h2>Select Languages</h2>
+                <div id="languagesList" class="languages-grid"></div>
+
+                <div class="actions">
+                    <button id="backBtn" class="secondary">Back</button>
+                    <button id="startBtn" class="primary">Start Generation</button>
+                </div>
+            </section>
+
+            <!-- Step 3: Dashboard & Preview -->
+            <section id="dashboardSection" class="hidden">
+                <div class="status-bar">
+                    <div class="status-item">
+                        <span class="label">Status:</span>
+                        <span id="statusText">Initializing...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Progress:</span>
+                        <div class="progress-bar">
+                            <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <span id="progressText">0%</span>
+                    </div>
+                    <div class="button-group">
+                        <button id="exitBtn" class="danger">Exit</button>
+                    </div>
+                </div>
+
+                <div class="preview-container">
+                    <div class="preview-wrapper">
+                        <img id="previewImage" src="" alt="Preview" style="display: none;">
+                        <div id="previewPlaceholder">Waiting for frames...</div>
+
+                        <div class="time-display" id="timeDisplay">00:00</div>
+
+                        <audio id="audioPlayer" style="display: none;"></audio>
+                    </div>
+                    <div class="controls-hint">
+                        Click to Play/Pause | ←/→: Seek 5s | F: Fullscreen | ESC: Exit Fullscreen
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>

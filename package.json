@@ -1,0 +1,38 @@
+{
+  "name": "mrlyrics",
+  "version": "1.0.0",
+  "description": "YouTube lyrics video generator with pixelated fonts",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": [
+    "youtube",
+    "lyrics",
+    "video",
+    "transcript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "canvas": "^3.2.0",
+    "commander": "^11.1.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "youtube-transcript": "^1.2.1",
+    "yt-dlp-wrap": "^2.3.12"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "@types/fluent-ffmpeg": "^2.1.24",
+    "@types/node": "^20.10.6",
+    "node-gyp": "^12.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
