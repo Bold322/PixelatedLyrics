@@ -1,9 +1,32 @@
-import { createCanvas, CanvasRenderingContext2D } from 'canvas';
+import { createCanvas, CanvasRenderingContext2D, registerFont } from 'canvas';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import ffmpeg from 'fluent-ffmpeg';
 import { TranscriptItem, VideoConfig } from './types.js';
 import { existsSync } from 'fs';
+
+// Register Pixelify Sans font if available
+// Check both local fonts directory and system font directory
+const localFontPath = join(process.cwd(), 'fonts', 'PixelifySans-Regular.ttf');
+const systemFontPath = '/usr/share/fonts/truetype/pixelify/PixelifySans-Regular.ttf';
+
+let fontPath: string | null = null;
+if (existsSync(localFontPath)) {
+  fontPath = localFontPath;
+} else if (existsSync(systemFontPath)) {
+  fontPath = systemFontPath;
+}
+
+if (fontPath) {
+  try {
+    registerFont(fontPath, { family: 'Pixelify Sans' });
+    console.log('✅ Registered Pixelify Sans font');
+  } catch (error) {
+    console.warn('Could not register Pixelify Sans font:', error);
+  }
+} else {
+  console.warn('⚠️  Pixelify Sans font not found. Using fallback fonts.');
+}
 
 export class VideoGenerator {
   private config: VideoConfig;
@@ -32,9 +55,7 @@ export class VideoGenerator {
    */
   private renderPixelatedText(text: string, x: number, y: number, fontSize: number): void {
     // Set font - using Pixelify Sans for pixelated look
-    // Note: Canvas doesn't support web fonts directly, so we'll use a system fallback
-    // For best results, install Pixelify Sans font on the system
-    // Fallback to monospace if font not available
+    // Font is registered at module level if available
     this.ctx.font = `bold ${fontSize}px "Pixelify Sans", "Courier New", monospace`;
     this.ctx.fillStyle = this.config.textColor;
     
