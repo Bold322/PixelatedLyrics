@@ -136,14 +136,13 @@ async function checkVideo() {
             return;
         }
 
-        // Sort: manual first, then preferred languages, then auto-generated
+        // Separate manual and auto-generated
+        const manualLangs = data.languages.filter(l => !l.isAuto);
+        const autoLangs = data.languages.filter(l => l.isAuto);
         const preferred = ['mn', 'en', 'ja', 'ko', 'ru'];
-        data.languages.sort((a, b) => {
-            // Manual subtitles first
-            if (!a.isAuto && b.isAuto) return -1;
-            if (a.isAuto && !b.isAuto) return 1;
-            
-            // Then preferred languages
+
+        // Sort manual languages by preference
+        manualLangs.sort((a, b) => {
             const aIdx = preferred.findIndex(p => a.code.startsWith(p));
             const bIdx = preferred.findIndex(p => b.code.startsWith(p));
             if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
@@ -152,31 +151,96 @@ async function checkVideo() {
             return 0;
         });
 
-        data.languages.forEach(lang => {
-            const div = document.createElement('div');
-            div.className = 'language-item';
-            
-            // Show language with type indicator
-            const typeLabel = lang.isAuto ? ' (Auto)' : ' (Manual)';
-            div.innerHTML = `<span>${lang.code} - ${lang.name}${typeLabel}</span>`;
-            div.dataset.code = lang.code; // Store the code in data attribute
-            
-            // Add visual indicator for auto-generated
-            if (lang.isAuto) {
-                div.classList.add('auto-caption');
-            }
-            
-            // Auto-select preferred languages (manual preferred)
-            if (preferred.some(p => lang.code.startsWith(p)) && !lang.isAuto) {
-                div.classList.add('selected');
-            }
-            
-            div.addEventListener('click', () => {
-                div.classList.toggle('selected');
-            });
-            
-            inputs.languagesList.appendChild(div);
+        // Sort auto-generated languages by preference
+        autoLangs.sort((a, b) => {
+            const aIdx = preferred.findIndex(p => a.code.startsWith(p));
+            const bIdx = preferred.findIndex(p => b.code.startsWith(p));
+            if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+            if (aIdx !== -1) return -1;
+            if (bIdx !== -1) return 1;
+            return 0;
         });
+
+        // Show manual CC if available (selectable)
+        if (manualLangs.length > 0) {
+            manualLangs.forEach(lang => {
+                const div = document.createElement('div');
+                div.className = 'language-item';
+                div.innerHTML = `<span>${lang.code} - ${lang.name}</span>`;
+                div.dataset.code = lang.code;
+                
+                // Auto-select preferred languages
+                if (preferred.some(p => lang.code.startsWith(p))) {
+                    div.classList.add('selected');
+                }
+                
+                div.addEventListener('click', () => {
+                    div.classList.toggle('selected');
+                });
+                
+                inputs.languagesList.appendChild(div);
+            });
+
+            // If auto-generated also exist, show them in a collapsible group
+            if (autoLangs.length > 0) {
+                const autoGroup = document.createElement('div');
+                autoGroup.className = 'auto-group';
+                
+                const toggle = document.createElement('div');
+                toggle.className = 'auto-group-toggle';
+                toggle.innerHTML = `<span>🤖 Auto-generated Captions (${autoLangs.length})</span><span class="toggle-icon">▼</span>`;
+                toggle.addEventListener('click', () => {
+                    const content = autoGroup.querySelector('.auto-group-content');
+                    const icon = toggle.querySelector('.toggle-icon');
+                    if (content.classList.contains('collapsed')) {
+                        content.classList.remove('collapsed');
+                        icon.textContent = '▼';
+                    } else {
+                        content.classList.add('collapsed');
+                        icon.textContent = '▶';
+                    }
+                });
+                
+                const content = document.createElement('div');
+                content.className = 'auto-group-content collapsed';
+                
+                autoLangs.forEach(lang => {
+                    const div = document.createElement('div');
+                    div.className = 'language-item auto-caption';
+                    div.innerHTML = `<span>${lang.code} - ${lang.name}</span>`;
+                    div.dataset.code = lang.code;
+                    
+                    div.addEventListener('click', () => {
+                        div.classList.toggle('selected');
+                    });
+                    
+                    content.appendChild(div);
+                });
+                
+                autoGroup.appendChild(toggle);
+                autoGroup.appendChild(content);
+                inputs.languagesList.appendChild(autoGroup);
+            }
+        } else {
+            // Only auto-generated available - show them as selectable
+            autoLangs.forEach(lang => {
+                const div = document.createElement('div');
+                div.className = 'language-item auto-caption';
+                div.innerHTML = `<span>${lang.code} - ${lang.name} 🤖</span>`;
+                div.dataset.code = lang.code;
+                
+                // Auto-select preferred languages
+                if (preferred.some(p => lang.code.startsWith(p))) {
+                    div.classList.add('selected');
+                }
+                
+                div.addEventListener('click', () => {
+                    div.classList.toggle('selected');
+                });
+                
+                inputs.languagesList.appendChild(div);
+            });
+        }
 
         // Check if already has state
         if (data.state && data.state.status !== 'idle') {

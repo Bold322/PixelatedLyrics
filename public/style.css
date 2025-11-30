@@ -146,9 +146,46 @@ button.danger {
     border-style: dashed;
 }
 
-.language-item.auto-caption::after {
-    content: " 🤖";
+.auto-group {
+    grid-column: 1 / -1;
+    margin-top: 1rem;
+}
+
+.auto-group-toggle {
+    padding: 0.8rem 1rem;
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.auto-group-toggle:hover {
+    background: #333;
+    border-color: var(--accent-color);
+}
+
+.toggle-icon {
+    transition: transform 0.2s ease;
     font-size: 0.8rem;
+}
+
+.auto-group-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.auto-group-content.collapsed {
+    display: none;
 }
 
 .lang-checkbox {
