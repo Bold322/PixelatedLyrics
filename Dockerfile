@@ -21,17 +21,18 @@ WORKDIR /app
 # Copy package files
 COPY package.json pnpm-lock.yaml* ./
 
-# Install pnpm if not available
-RUN npm install -g pnpm
+# Install dependencies using npm (better native module support than pnpm)
+# npm will work fine even with pnpm-lock.yaml present
+RUN npm install
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Ensure canvas native module is built
+RUN npm rebuild canvas
 
 # Copy source code
 COPY . .
 
 # Build TypeScript
-RUN pnpm run build
+RUN npm run build
 
 # Create necessary directories
 RUN mkdir -p output temp temp_subs
@@ -40,5 +41,5 @@ RUN mkdir -p output temp temp_subs
 EXPOSE 3000
 
 # Start the server
-CMD ["pnpm", "start"]
+CMD ["npm", "start"]
 
