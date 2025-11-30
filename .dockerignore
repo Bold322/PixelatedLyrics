@@ -1,0 +1,15 @@
+node_modules
+dist
+*.mp4
+*.mp3
+*.wav
+*.webm
+temp
+output
+.env
+.git
+.gitignore
+README.md
+.DS_Store
+*.log
+

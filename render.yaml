@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: mrlyrics
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /
+

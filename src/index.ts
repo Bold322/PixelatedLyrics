@@ -1,4 +1,5 @@
 import { Server } from './server.js';
 
 const server = new Server();
-server.start(3000);
+const port = parseInt(process.env.PORT || '3000', 10);
+server.start(port);
