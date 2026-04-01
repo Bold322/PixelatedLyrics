@@ -4,6 +4,7 @@ FROM node:20-slim
 # Install system dependencies for FFmpeg, yt-dlp, canvas, and fonts
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    python3 \
     wget \
     build-essential \
     libcairo2-dev \
