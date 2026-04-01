@@ -1,4 +1,3 @@
-import { YoutubeTranscript } from 'youtube-transcript';
 import { existsSync } from 'fs';
 import { mkdir, readFile, readdir, unlink } from 'fs/promises';
 import { join } from 'path';
@@ -8,11 +7,128 @@ import { TranscriptItem } from './types.js';
 
 const execPromise = promisify(exec);
 
+/** yt-dlp flags used on every invocation: avoid update checks (CI/Docker) and playlist expansion */
+const YT_DLP_COMMON = '--no-playlist --no-update';
+
+/** BCP-47-ish track ids from yt-dlp (e.g. en, zh-Hans, pt-PT-mn); rejects stderr warning lines mistaken for rows */
+const SUBTITLE_LANG_CODE_RE = /^[a-zA-Z][a-zA-Z0-9._-]*$/;
+
 export class YouTubeExtractor {
   private ytDlpPath: string;
 
   constructor() {
     this.ytDlpPath = 'yt-dlp'; // Assumes yt-dlp is in PATH
+  }
+
+  /**
+   * Parses the combined stdout/stderr of `yt-dlp --list-subs`.
+   * Section headers vary by locale/version; we match stable substrings.
+   */
+  private parseListSubsOutput(raw: string): { code: string; name: string; isAuto: boolean }[] {
+    const languages: { code: string; name: string; isAuto: boolean }[] = [];
+    const seenCodes = new Set<string>();
+    const lines = raw.split('\n');
+
+    let parsingManualSubs = false;
+    let parsingAutoCaptions = false;
+
+    const isTableHeaderLine = (line: string): boolean => {
+      const parts = line.trim().split(/\s+/);
+      return parts.length >= 2 && parts[0] === 'Language' && parts[1] === 'Name';
+    };
+
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      if (lower.includes('available subtitles') && !lower.includes('automatic')) {
+        parsingManualSubs = true;
+        parsingAutoCaptions = false;
+        continue;
+      }
+      if (lower.includes('available automatic captions')) {
+        parsingManualSubs = false;
+        parsingAutoCaptions = true;
+        continue;
+      }
+
+      if (!parsingManualSubs && !parsingAutoCaptions) {
+        continue;
+      }
+
+      if (isTableHeaderLine(line) || line.trim() === '' || line.trim().startsWith('--')) {
+        continue;
+      }
+
+      const parts = line.trim().split(/\s{2,}/);
+      if (parts.length < 2) {
+        continue;
+      }
+
+      const code = parts[0];
+      if (!code || code === 'Language' || code === 'live_chat' || !SUBTITLE_LANG_CODE_RE.test(code)) {
+        continue;
+      }
+
+      if (!seenCodes.has(code)) {
+        seenCodes.add(code);
+        languages.push({
+          code,
+          name: parts[1],
+          isAuto: parsingAutoCaptions
+        });
+      }
+    }
+
+    return languages;
+  }
+
+  /**
+   * Fallback when --list-subs text parsing yields nothing (output shape changes, buffering, etc.).
+   * Uses metadata JSON: manual tracks in `subtitles`, auto in `automatic_captions`.
+   */
+  private async getAvailableLanguagesFromMetadataJson(videoUrl: string): Promise<{ code: string; name: string; isAuto: boolean }[]> {
+    const { stdout, stderr } = await execPromise(
+      `${this.ytDlpPath} --skip-download --dump-single-json ${YT_DLP_COMMON} "${videoUrl}"`,
+      { maxBuffer: 50 * 1024 * 1024 }
+    );
+    if (stderr.trim()) {
+      console.warn(stderr.trim());
+    }
+    const blob = stdout;
+    const start = blob.indexOf('{');
+    const end = blob.lastIndexOf('}');
+    if (start === -1 || end <= start) {
+      throw new Error('yt-dlp metadata: no JSON object in output');
+    }
+    const data = JSON.parse(blob.slice(start, end + 1)) as {
+      subtitles?: Record<string, Array<{ name?: string }>>;
+      automatic_captions?: Record<string, Array<{ name?: string }>>;
+    };
+
+    const languages: { code: string; name: string; isAuto: boolean }[] = [];
+    const seenCodes = new Set<string>();
+
+    const addLang = (code: string, name: string, isAuto: boolean): void => {
+      if (code === 'live_chat' || seenCodes.has(code)) {
+        return;
+      }
+      seenCodes.add(code);
+      languages.push({ code, name, isAuto });
+    };
+
+    for (const [code, tracks] of Object.entries(data.subtitles ?? {})) {
+      if (code === 'live_chat') {
+        continue;
+      }
+      const name = tracks?.[0]?.name?.trim() || code;
+      addLang(code, name, false);
+    }
+
+    for (const [code, tracks] of Object.entries(data.automatic_captions ?? {})) {
+      const name = tracks?.[0]?.name?.trim() || code;
+      addLang(code, name, true);
+    }
+
+    return languages;
   }
 
   /**
@@ -53,60 +169,42 @@ export class YouTubeExtractor {
   async getAvailableLanguages(videoUrl: string): Promise<{ code: string; name: string; isAuto: boolean }[]> {
     console.log('📝 Fetching available subtitles...');
     const normalizedUrl = this.normalizeUrl(videoUrl);
-    
+
+    const logResult = (languages: { code: string; name: string; isAuto: boolean }[], source: string): void => {
+      const manual = languages.filter((l) => !l.isAuto).length;
+      const auto = languages.filter((l) => l.isAuto).length;
+      console.log(`✅ Found ${languages.length} subtitle languages (${manual} manual, ${auto} auto) via ${source}`);
+    };
+
     try {
-      // Add --no-playlist to avoid processing entire playlists
-      // Increase maxBuffer to handle large subtitle lists
-      const { stdout } = await execPromise(
-        `${this.ytDlpPath} --list-subs --no-playlist "${normalizedUrl}"`,
-        { maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
+      // Subtitle tables are on stdout; stderr holds progress/warnings and must not be parsed as rows.
+      const { stdout, stderr } = await execPromise(
+        `${this.ytDlpPath} --list-subs ${YT_DLP_COMMON} "${normalizedUrl}"`,
+        { maxBuffer: 10 * 1024 * 1024 }
       );
-      
-      const languages: { code: string; name: string; isAuto: boolean }[] = [];
-      const seenCodes = new Set<string>(); // Avoid duplicates
-      const lines = stdout.split('\n');
-      
-      let parsingManualSubs = false;
-      let parsingAutoCaptions = false;
-      
-      for (const line of lines) {
-        // Check for section headers
-        if (line.includes('Available subtitles')) {
-          parsingManualSubs = true;
-          parsingAutoCaptions = false;
-          continue;
-        }
-        if (line.includes('Available automatic captions')) {
-          parsingManualSubs = false;
-          parsingAutoCaptions = true;
-          continue;
-        }
-        
-        // Parse both manual subtitles and auto captions
-        if ((parsingManualSubs || parsingAutoCaptions) && !line.includes('Language') && !line.includes('Name')) {
-          if (line.trim() !== '' && !line.startsWith('--')) {
-            const parts = line.trim().split(/\s{2,}/);
-            if (parts.length >= 2) {
-              const code = parts[0];
-              // Only add if we haven't seen this code before (prefer manual over auto)
-              if (!seenCodes.has(code)) {
-                seenCodes.add(code);
-                languages.push({
-                  code,
-                  name: parts[1],
-                  isAuto: parsingAutoCaptions
-                });
-              }
-            }
-          }
-        }
+      if (stderr.trim()) {
+        console.warn(stderr.trim());
       }
-      
-      console.log(`✅ Found ${languages.length} subtitle languages (${languages.filter(l => !l.isAuto).length} manual, ${languages.filter(l => l.isAuto).length} auto)`);
+      let languages = this.parseListSubsOutput(stdout);
+
+      if (languages.length === 0) {
+        console.log('📝 List-subs text empty; trying metadata JSON...');
+        languages = await this.getAvailableLanguagesFromMetadataJson(normalizedUrl);
+        logResult(languages, 'metadata JSON');
+      } else {
+        logResult(languages, 'list-subs');
+      }
       return languages;
     } catch (error) {
-      console.warn('⚠️ Failed to list subtitles with yt-dlp:', error);
-      return [];
+      console.warn('⚠️ list-subs failed, trying metadata JSON:', error);
+      try {
+        const languages = await this.getAvailableLanguagesFromMetadataJson(normalizedUrl);
+        logResult(languages, 'metadata JSON fallback');
+        return languages;
+      } catch (fallbackErr) {
+        console.warn('⚠️ Subtitle discovery failed:', fallbackErr);
+        return [];
+      }
     }
   }
 
@@ -135,11 +233,11 @@ export class YouTubeExtractor {
 
         // Try manual subtitles first, then auto-generated if not available
         try {
-          await execPromise(`${this.ytDlpPath} --write-sub --sub-lang ${lang} --skip-download --no-playlist --output "${outputPath}" "${normalizedUrl}"`);
+          await execPromise(`${this.ytDlpPath} --write-sub --sub-lang ${lang} --skip-download ${YT_DLP_COMMON} --output "${outputPath}" "${normalizedUrl}"`);
         } catch (error) {
           // If manual subtitle fails, try auto-generated captions
           console.log(`  Trying auto-generated captions for ${lang}...`);
-          await execPromise(`${this.ytDlpPath} --write-auto-sub --sub-lang ${lang} --skip-download --no-playlist --output "${outputPath}" "${normalizedUrl}"`);
+          await execPromise(`${this.ytDlpPath} --write-auto-sub --sub-lang ${lang} --skip-download ${YT_DLP_COMMON} --output "${outputPath}" "${normalizedUrl}"`);
         }
         
         // yt-dlp might append language code to filename
@@ -269,7 +367,7 @@ export class YouTubeExtractor {
       // Download audio in webm format without conversion (no ffmpeg needed)
       // Use --no-playlist to avoid downloading entire playlists
       await execPromise(
-        `${this.ytDlpPath} -f bestaudio --no-playlist --output "${webmPath}" "${normalizedUrl}"`
+        `${this.ytDlpPath} -f bestaudio ${YT_DLP_COMMON} --output "${webmPath}" "${normalizedUrl}"`
       );
       console.log('✅ Audio downloaded');
       return webmPath;

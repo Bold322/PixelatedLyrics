@@ -3,6 +3,7 @@ FROM node:20-slim
 
 # Install system dependencies for FFmpeg, yt-dlp, canvas, and fonts
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     ffmpeg \
     python3 \
     wget \
