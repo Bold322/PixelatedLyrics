@@ -324,7 +324,8 @@ function updateDashboard(state) {
     if (state.status === 'generating' || state.status === 'completed') {
         // Setup audio if not already
         if (!display.audio.src) {
-            display.audio.src = `/${state.videoId}/audio.webm?t=${Date.now()}`;
+            const audioName = state.audioFile || 'audio.webm';
+            display.audio.src = `/${state.videoId}/${audioName}?t=${Date.now()}`;
             display.audio.load();
             startSync();
         }

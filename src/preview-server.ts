@@ -52,6 +52,7 @@ export class PreviewServer {
               const ext = extname(this.audioPath).toLowerCase();
               const contentType = 
                 ext === '.m4a' ? 'audio/mp4' :
+                ext === '.mp4' ? 'audio/mp4' :
                 ext === '.webm' ? 'audio/webm' :
                 ext === '.opus' ? 'audio/opus' :
                 ext === '.mp3' ? 'audio/mpeg' :

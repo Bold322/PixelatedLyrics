@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { mkdir, readFile, readdir, unlink } from 'fs/promises';
-import { join } from 'path';
+import { basename, dirname, extname, join } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { TranscriptItem } from './types.js';
@@ -350,28 +350,59 @@ export class YouTubeExtractor {
     return items;
   }
 
+  /**
+   * Downloads audio for the video. Prefers DASH/WebM bestaudio; if googlevideo returns HTTP 403
+   * (common when YouTube withholds direct URLs for DASH audio / SABR), falls back to a
+   * progressive MP4 (e.g. format 18) which still carries AAC in an MP4 the browser can play.
+   */
   async downloadAudio(videoUrl: string, outputPath: string): Promise<string> {
     console.log('🎤 Downloading audio...');
     const normalizedUrl = this.normalizeUrl(videoUrl);
-    
-    // Change output path to .webm since we're not converting
-    const webmPath = outputPath.replace(/\.(mp3|m4a)$/, '.webm');
-    
-    // Check if file exists
+
+    const dir = dirname(outputPath);
+    const stem = basename(outputPath, extname(outputPath));
+    const webmPath = join(dir, `${stem}.webm`);
+    const mp4Path = join(dir, `${stem}.mp4`);
+
     if (existsSync(webmPath)) {
       console.log('✅ Audio already exists, skipping download');
       return webmPath;
     }
+    if (existsSync(mp4Path)) {
+      console.log('✅ Audio already exists, skipping download');
+      return mp4Path;
+    }
 
-    try {
-      // Download audio in webm format without conversion (no ffmpeg needed)
-      // Use --no-playlist to avoid downloading entire playlists
+    const downloadDashAudio = async (): Promise<void> => {
       await execPromise(
         `${this.ytDlpPath} -f bestaudio ${YT_DLP_COMMON} --output "${webmPath}" "${normalizedUrl}"`
       );
-      console.log('✅ Audio downloaded');
+    };
+
+    try {
+      await downloadDashAudio();
+      console.log('✅ Audio downloaded (DASH/WebM)');
       return webmPath;
+    } catch (firstError) {
+      console.warn(
+        '⚠️ DASH bestaudio failed (often HTTP 403 on audio-only streams). Trying progressive MP4...',
+        firstError instanceof Error ? firstError.message : firstError
+      );
+      if (existsSync(webmPath)) {
+        await unlink(webmPath).catch(() => undefined);
+      }
+    }
+
+    try {
+      await execPromise(
+        `${this.ytDlpPath} -f "18/best[ext=mp4][acodec!=none][vcodec!=none]" ${YT_DLP_COMMON} --output "${mp4Path}" "${normalizedUrl}"`
+      );
+      console.log('✅ Audio downloaded (progressive MP4, AAC)');
+      return mp4Path;
     } catch (error) {
+      if (existsSync(mp4Path)) {
+        await unlink(mp4Path).catch(() => undefined);
+      }
       console.error('❌ Failed to download audio:', error);
       throw error;
     }

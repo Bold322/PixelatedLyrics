@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { existsSync } from 'fs';
 import { mkdir, writeFile, readFile } from 'fs/promises';
 import { YouTubeExtractor } from './youtube-extractor.js';
@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(join(process.cwd(), 'public')));
 
-// Serve output directory at root to allow /{videoId}/audio.webm and /{videoId}/frames/...
+// Serve output directory at root for /{videoId}/audio.webm|audio.mp4 and /{videoId}/frames/...
 app.use(express.static(outputDir));
 
 // State management
@@ -30,6 +30,8 @@ interface ProjectState {
   error?: string;
   config?: VideoConfig;
   selectedLanguages?: string[];
+  /** Basename under output/{videoId}/ — audio.webm or audio.mp4 after download */
+  audioFile?: string;
 }
 
 const projects = new Map<string, ProjectState>();
@@ -179,7 +181,8 @@ async function generateVideo(project: ProjectState) {
     
     // 2. Download Audio
     project.progress = 30;
-    await extractor.downloadAudio(project.url, audioPath);
+    const resolvedAudioPath = await extractor.downloadAudio(project.url, audioPath);
+    project.audioFile = basename(resolvedAudioPath);
     
     // 3. Generate Frames
     project.status = 'generating';
